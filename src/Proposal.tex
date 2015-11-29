@@ -1,0 +1,162 @@
+\documentclass[a4paper]{article}
+
+%% \usepackage{amsmath,amsthm,amssymb}
+%% \usepackage{proof}
+%% \usepackage{stmaryrd}
+%% \usepackage{etoolbox}
+%% \usepackage[hidelinks]{hyperref}
+%% \usepackage{pdfcomment}
+%% \usepackage{listings}
+\usepackage{haskell}
+
+\linespread{1.05}
+
+\oddsidemargin 0in
+\evensidemargin 0in
+\textheight 9.5in
+\textwidth 6.2in
+\topmargin -7mm
+\parindent 10pt
+
+\begin{document}
+
+\title{Proposal[draft]: Optimization by symbolic evaluation based program construction }
+\maketitle
+\centerline{
+  Andras Slemmer
+}
+
+\section{Overview}
+
+\subsection{Idea}
+
+Traditional forward and backward analysis based optimizations do the following:
+
+\begin{itemize}
+
+\item Take a piece of code (e.g. function body) $C$ and perform the given analysis, resulting in some information $I$
+
+\item Use $I$ to transform (and justify transforming) $C$ into more efficient code $C'$
+
+\end{itemize}
+
+The project's aim is to explore the feasibility of gaining enough information in $I$ to enable the \emph{construction} of some new code $D$ that has the same semantics as $C$. The idea is to do this by capturing the \emph{effect} of the reduction of $C$ by doing symbolic evaluation, extracting the semantically relevant parts of it and constructing code that produces that same effect. The idea is that by doing so we can get rid of semantically unnecessary operations that may be present in $C$ without having to recourse to specific types of analyses.
+
+\subsection{Motivation}
+
+\subsubsection*{Subsumption of existing optimizations}
+
+The optimization would therefore have two parts: symbolic evaluation (code $\to$ effect) and construction (effect $\to$ code), and it can be tuned by changing what the input is and what we do with the effect before construction.
+
+Existing optimizations like strictness analysis/demand analysis, inlining or compile time garbage collection can be seen as different parameterizations.
+
+\begin{itemize}
+\item [EXPAND]Strictness/demand analysis
+
+Cite Mycroft (Cousots?)(strictness), SPJ(demand). The IR would be operations on the heap, reduction to whnf etc. The effect would be a refining of an unknown heap. The construction would simply look at what reductions took place and do those. As unused(absent) arguments will not be part of the effect the constructed code will also not care about them.
+
+\item [EXPAND]Inlining
+
+What to cite?
+
+Start the analysis with added information about functions in scope.
+
+\item [EXPAND]Compile time garbage collection
+
+What to cite?
+
+Before construction garbage collect the symbolic state.
+
+\end{itemize}
+
+\subsubsection*{Lower coupling of responsibilities in compilers}
+
+Because our optimization constructs code on the same abstraction level as it started from it can be seen as an automorphism on a given intermediate representation. If we were successful in defining a general framework for evaluation-construction then compilation would become a matter of choosing the right intermediate representations until we reach machine code. The compiler writer can focus on the correctness of each translation step without having to worry about generating optimal code. Optimization would become a decoupled operation that may be performed on each representation. (pic?)
+
+\subsubsection*{Possibility of dynamic optimization}
+
+If we integrate this optimization into the runtime system we can do the same analysis extended with dynamic information about the runtime state (e.g. instead of starting with an unknown heap extend it with available information), possibly resulting in the construction of (byte)code that is specifically catered for the runtime environment at hand.
+
+\mbox{}\\
+
+
+\section{Examples of desired results}
+
+\begin{itemize}
+
+\item [EXPAND]Strictness
+
+The Haskell compiler GHC performs demand analysis that, given a function $f$, calculates whether an argument $a$ is needed at all, and if so, whether it is guaranteed to be reduced to weak head normal form. An example given in their draft paper\cite{demand_analysis}:
+
+\begin{haskell*}
+  f :: (Int, Int) \to Int\\
+  f p = (\hscase{p} (a, b) \to a) + 1
+\end{haskell*}
+
+The result of demand analysis on this function results in a demand signature $I = Str(Str,Abs)$, meaning $f$ is strict in its pair argument and the first element of the pair, and the second element is unused.
+
+(Give example of symbolic evaluation-reconstruction for this function)
+
+\item [EXPAND]Compile time garbage collection
+
+\item [EXPAND]Dynamic optimization
+
+
+\end{itemize}
+
+
+\section{Project plan}
+
+\subsection{Goals}
+
+By the end of the project I would like to
+
+\begin{itemize}
+\item Have shown that the proposed optimization can be done and works
+\item Have developed a theoretical framework that allows sound implementation of the technique
+\item Have a working compiler and runtime
+\item Have written a backend for an existing in-use frontend language (e.g. Haskell or ML)
+\end{itemize}
+
+\subsection{Steps}
+
+Following is the layout the bigger strokes of the project. The ordering is somewhat arbitrary and would be fixed as the project develops.
+
+\subsubsection*{Reading}
+
+This part of the project would focus on exploring the relevant parts of compiler research. This includes papers on static analyses, semantics (e.g. abstract interpretation) and symbolic evaluation. (Papers/theses in mind?)
+
+\subsubsection*{Toy compiler}
+
+My plan is to develop a toy compiler for experimenting purposes. I very much intend the project to have practical results, and a working implementation of the sketched optimization technique is a good coherence criterion for the idea anyway.
+
+\subsubsection*{Theoretical basis}
+
+This would involve developing a rigorous theoretical framework in which we can examine the soundness of the optimization, as well as give optimization conditions(e.g. we are guaranteed to have less memory allocations than before). My goal is to develop a theory general enough to be agnostic with regards to the language.
+
+The research would initially focus on a language with limited capabilities e.g. lazy lambda calculus with primitive numbers or an imperative garbage collected language working on the heap.
+
+\subsubsection*{More expressiveness}
+
+Once we are done with the simple languages we can move onto more muddy waters and look at how to express the effect of concurrency or side effects.
+
+For example we can represent side effecting function calls as a chain of states the runtime must be in when making the calls. Construction then needs to make sure that these states are indeed reached and the ordering is preserved.
+
+Concurrency we may want to represent as a set of constraints on the interleaving of evaluations which the construction needs to satisfy.
+
+\subsubsection*{Dynamic optimization}
+
+This part would be about how to incorporate the optimization into the runtime. An example use case would be detecting long residing objects in the heap and specializing closures that use it. This requires a couple of things:
+
+The runtime must use a representation of both the code and the runtime state that is amenable to symbolic evaluation. This suggests that we either use a bytecode intepreter that is used both for execution and analysis, or think of a way to abstract the runtime state into a higher level representation.
+
+Furthermore the runtime should be able to determine whether such an optimization is feasible at all. The above example is to detect long residing objects, but it may also be the detection of ``hot'' code (JVM style).
+
+\subsubsection*{Backend for existing language}
+
+This is what would complete the practical aspect of the project. As the optimization technique is frontend-language-agnostic we can pick any language that has clear semantics. We could even bootstrap the compiler itself by targeting the language it was written in.
+
+\bibliographystyle{unsrt}
+\bibliography{Proposal}
+
+\end{document}
