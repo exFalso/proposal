@@ -1,52 +1,40 @@
-%% 
-%% This is file `amsgen.sty', generated 
-%% on <1996/11/1> with the docstrip utility (2.2i).
-%% 
+%%
+%% This is file `amsgen.sty',
+%% generated with the docstrip utility.
+%%
 %% The original source files were:
-%% 
+%%
 %% amsgen.dtx 
-%%% ====================================================================
-%%%  @LaTeX-file{
-%%%     filename        = "amsgen.dtx",
-%%%     version         = "1.2b",
-%%%     date            = "1996/10/29",
-%%%     time            = "19:17:14 EST",
-%%%     author          = "American Mathematical Society",
-%%%     copyright       = "Copyright (C) 1996 American Mathematical Society,
-%%%                        all rights reserved.  Copying of this file is
-%%%                        authorized only if either:
-%%%                        (1) you make absolutely no changes to your copy,
-%%%                        including name; OR
-%%%                        (2) if you do make changes, you first rename it
-%%%                        to some other name.",
-%%%     address         = "American Mathematical Society,
-%%%                        Technical Support,
-%%%                        Electronic Products and Services,
-%%%                        P. O. Box 6248,
-%%%                        Providence, RI 02940,
-%%%                        USA",
-%%%     telephone       = "401-455-4080 or (in the USA and Canada)
-%%%                        800-321-4AMS (321-4267)",
-%%%     FAX             = "401-331-3842",
-%%%     checksum        = "28009 400 1653 14852",
-%%%     email           = "tech-support@ams.org (Internet)",
-%%%     codetable       = "ISO/ASCII",
-%%%     keywords        = "latex, amslatex, ams-latex",
-%%%     supported       = "yes",
-%%%     abstract        = "This is part of the AMS-\LaTeX{} distribution.
-%%%                        It contains some general internal macros shared
-%%%                        by several different files in AMS-\LaTeX{}.",
-%%%     docstring       = "The checksum field above contains a CRC-16
-%%%                        checksum as the first value, followed by the
-%%%                        equivalent of the standard UNIX wc (word
-%%%                        count) utility output of lines, words, and
-%%%                        characters.  This is produced by Robert
-%%%                        Solovay's checksum utility.",
-%%%  }
-%%% ====================================================================
+%% 
+%% Copyright 1995, 1999 American Mathematical Society.
+%% 
+%% American Mathematical Society
+%% Technical Support
+%% Publications Technical Group
+%% 201 Charles Street
+%% Providence, RI 02904
+%% USA
+%% tel: (401) 455-4080
+%%      (800) 321-4267 (USA and Canada only)
+%% fax: (401) 331-3842
+%% email: tech-support@ams.org
+%% 
+%% This work may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3c
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%   http://www.latex-project.org/lppl.txt
+%% and version 1.3c or later is part of all distributions of LaTeX
+%% version 2005/12/01 or later.
+%% 
+%% This work has the LPPL maintenance status `maintained'.
+%% 
+%% The Current Maintainer of this work is the American Mathematical
+%% Society.
+%% 
 \NeedsTeXFormat{LaTeX2e}% LaTeX 2.09 can't be used (nor non-LaTeX)
 [1994/12/01]% LaTeX date must December 1994 or later
-\ProvidesFile{amsgen}[1996/10/29 v1.2b]
+\ProvidesFile{amsgen.sty}[1999/11/30 v2.0]
 \providecommand{\@saveprimitive}[2]{\begingroup\escapechar`\\\relax
   \edef\@tempa{\string#1}\edef\@tempb{\meaning#1}%
   \ifx\@tempa\@tempb \global\let#2#1%
@@ -74,12 +62,16 @@
 \def\wdz@{\wd\z@}
 \def\boxz@{\box\z@}
 \def\relaxnext@{\let\@let@token\relax}
-\def\new@ifnextchar#1#2#3{%
-  \let\@tempe #1\def\@tempa{#2}\def\@tempb{#3}\futurelet
-    \@tempc\new@ifnch}
-\def\new@ifnch{\ifx\@tempc \@tempe \let\@tempd\@tempa
-             \else\let\@tempd\@tempb\fi\@tempd}
-\def\@ifstar#1#2{\new@ifnextchar *{\def\@tempa*{#1}\@tempa}{#2}}
+\long\def\new@ifnextchar#1#2#3{%
+  \let\reserved@d= #1%
+  \def\reserved@a{#2}\def\reserved@b{#3}%
+  \futurelet\@let@token\new@ifnch
+}
+\def\new@ifnch{%
+  \ifx\@let@token\reserved@d \let\reserved@b\reserved@a \fi
+  \reserved@b
+}
+\def\@ifstar#1#2{\new@ifnextchar *{\def\reserved@a*{#1}\reserved@a}{#2}}
 \@ifundefined{every@math@size}{%
 \let\every@math@size=\every@size
 \def\glb@settings{%
@@ -145,13 +137,11 @@
 \def\@addpunct#1{\ifnum\spacefactor>\@m \else#1\fi}
 \def\frenchspacing{\sfcode`\.1006\sfcode`\?1005\sfcode`\!1004%
   \sfcode`\:1003\sfcode`\;1002\sfcode`\,1001 }
-\def\@mathmeasure#1#2#3{\setbox#1\hbox{\frozen@everymath\@emptytoks
-  \m@th$#2#3$}}
 \def\nomath@env{\@amsmath@err{%
   \string\begin{\@currenvir} allowed only in paragraph mode%
 }\@ehb% "You've lost some text"
 }
 \def\Invalid@@{Invalid use of \string}
 \endinput
-%% 
+%%
 %% End of file `amsgen.sty'.

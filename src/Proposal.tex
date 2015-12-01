@@ -1,7 +1,7 @@
 \documentclass[a4paper]{article}
 
-%% \usepackage{amsmath,amsthm,amssymb}
-%% \usepackage{proof}
+\usepackage{amsmath,amsfonts}
+\usepackage{proof}
 %% \usepackage{stmaryrd}
 %% \usepackage{etoolbox}
 %% \usepackage[hidelinks]{hyperref}
@@ -25,6 +25,12 @@
 \centerline{
   Andras Slemmer
 }
+
+\newcommand{\reduces}{\Downarrow}
+\newcommand{\symweak}{\mathbb{W}}
+\newcommand{\app}{\ }
+\newcommand{\Wrapper}{\text{Wrapper}}
+\newcommand{\Worker}{\text{Worker}}
 
 \section{Overview}
 
@@ -69,9 +75,9 @@ Before construction garbage collect the symbolic state.
 
 \end{itemize}
 
-\subsubsection*{Lower coupling of responsibilities in compilers}
+\subsubsection*{[RANT, REMOVE?]Lower coupling of responsibilities in compilers}
 
-Because our optimization constructs code on the same abstraction level as it started from it can be seen as an automorphism on a given intermediate representation. If we were successful in defining a general framework for evaluation-construction then compilation would become a matter of choosing the right intermediate representations until we reach machine code. The compiler writer can focus on the correctness of each translation step without having to worry about generating optimal code. Optimization would become a decoupled operation that may be performed on each representation. (pic?)
+Because our optimization constructs code on the same abstraction level as it started from it can be seen as an automorphism on a given intermediate representation. If we were successful in defining a general framework for evaluation-construction then compilation would become a matter of choosing the right intermediate representations until we reach machine code. The compiler writer can focus on the correctness of each translation step without having to worry about generating optimal code. Optimization would become a decoupled operation that may be performed on each representation.
 
 \subsubsection*{Possibility of dynamic optimization}
 
@@ -82,28 +88,185 @@ If we integrate this optimization into the runtime system we can do the same ana
 
 \section{Examples of desired results}
 
-\begin{itemize}
+In the following I will try to demonstrate what I mean by \emph{effect} and \emph{construction}. Our goal will be to take a slightly modified version of the lazy lambda calculus presented in Launchbury's seminal paper\cite{Launchbury:1993:NSL:158511.158618} and extend it in a way that it is capable of expressing optimized code in terms of strictness and unboxing.
 
-\item [EXPAND]Strictness
+We will then proceed to give operational semantics for the calculus itself and afterwards define symbolic evaluation that calculates the effect of the reduction, which, unsurprisingly, will closely follow the structure of the operational semantics. Once we have an understanding of the effect we can define the construction of optimized code producing the same effect.
 
-The Haskell compiler GHC performs demand analysis that, given a function $f$, calculates whether an argument $a$ is needed at all, and if so, whether it is guaranteed to be reduced to weak head normal form. An example given in their draft paper\cite{demand_analysis}:
+\subsection{The calculus}
 
-\begin{haskell*}
-  f :: (Int, Int) \to Int\\
-  f p = (\hscase{p} (a, b) \to a) + 1
-\end{haskell*}
+The goal of strictness analysis is to allow strict evaluation of arguments to a lambda and avoid unnecessary creating of thunks in the heap. In order to capture this we need to introduce syntactic constructions that allow explicit control over reduction to normal form and allow argument passing without sharing. We will do this by introducting \emph{strict} and \emph{unboxed} application
 
-The result of demand analysis on this function results in a demand signature $I = Str(Str,Abs)$, meaning $f$ is strict in its pair argument and the first element of the pair, and the second element is unused.
+\newcommand{\strict}{\ !\ }
+\newcommand{\unboxed}{\ \#\ }
 
-(Give example of symbolic evaluation-reconstruction for this function)
+\begin{align}
+  M,N&::=\ x|\lambda x.M|M \app N|M \unboxed N|M \strict N
+\end{align}
 
-\item [EXPAND]Compile time garbage collection
+$M \unboxed N$ denotes unboxed application, $M \strict N$ denotes strict application.
 
-\item [EXPAND]Dynamic optimization
+\subsection{Operational semantics}
+
+In the following we will simply extend the semantics given in \cite{Launchbury:1993:NSL:158511.158618} with one exception: In the paper the semantics of application is actually that of unboxed applicaton, that is, an argument's reduction is not going to be shared if it is used several times in the body of a lambda. Instead we will give semantics of a boxed application, that is, one that creates a new thunk in the heap for the argument. The original semantics will be that of unboxed application. Furthermore we will not consider let bindings and issues with renaming for simplicity.
+
+\begin{gather*}
+  \infer
+      [\text{(Lambda)}]
+      {\Gamma : \lambda x. e \reduces \Gamma : \lambda x. e}
+      {}
+      \\
+      \\
+  \infer
+      [\text{(Boxed)}]
+      {\Gamma : f x \reduces \Gamma'' : z}
+      {\Gamma : f \reduces \Gamma' : \lambda y. e \;\;\;\;\; \Gamma'[\nu \to x] : e[\nu/y] \reduces \Gamma'' : z \;\;\;\;\; \text{$\nu$ fresh}}
+      \\
+      \\
+  \infer
+      [\text{(Unboxed)}]
+      {\Gamma : f \unboxed x \reduces \Gamma'' : z}
+      {\Gamma : f \reduces \Gamma' : \lambda y. e \;\;\;\;\; \Gamma' : e[x/y] \reduces \Gamma'' : z}
+      \\
+      \\
+  \infer
+      [\text{(Strict)}]
+      {\Gamma : f \strict x \reduces \Gamma''' : z}
+      {\Gamma : x \reduces \Gamma' : s \;\;\;\;\; \Gamma' : f \reduces \Gamma'' : \lambda y. e \;\;\;\;\; \Gamma'' : e[s/y] \reduces \Gamma''' : z}
+      \\
+      \\
+  \infer
+      [\text{(Variable)}]
+      {\Gamma[x \to e] : x \reduces \Gamma'[x \to z] : z}
+      {\Gamma : e \reduces \Gamma' : z}
+\end{gather*}
 
 
-\end{itemize}
+\subsection{Symbolic reduction}
 
+Before we specify symbolic reduction we need to understand what the \emph{effect} of reduction is. In our case it is going to be the set of variables and applications that are reduced to weak head normal form.
+
+Our reduction context is going to be a set of reductions and a \emph{symbolic} heap. By symbolic I mean that the reduction will finish if we try to reduce a variable that is not in the heap (free variables), much like what happens in the operational semantics in the case of lambdas. This would be a common theme for any intermediate representation we would like to examine using symbolic evaluation.
+
+Sidenote: Initially I only planned to account for unboxing/strictness opportunities, but I realized that with little modification the analysis can also account for \emph{safe} common subexpression elimination as well. That is, we only extract two equivalent subexpressions into one if both are guaranteed to reduce.
+
+\mbox{}\\
+
+
+The reduction set will contain either variables or applications. Note that if during symbolic evaluation we reduce $f \app x$ as well as $f \strict x$ then we want to represent them as the same in the reduction set. This is because at construction we will know whether we want unboxed application (if the argument was reduced as well) or simple application. In essence all strict applications will become unboxed, all unboxed applications will stay unboxed and boxed applications may or may not become unboxed. To this end we will need a helper function to disregard the type of applications in a term, in particular those that are guaranteed to reduce:
+
+\newcommand{\uppity}[1]{#1^{\uparrow}}
+
+\begin{align*}
+  \uppity{x} &= x\\
+  \uppity{(f \unboxed x)} &= \uppity{f} \app x\\
+  \uppity{(f \app x)} &= \uppity{f} \app x\\
+  \uppity{(f \strict x)} &= \uppity{f} \app \uppity{x}\\
+  \uppity{(\lambda x. M)} &= \lambda x. M
+\end{align*}
+
+
+Our symbolic reductions will have the form $\Gamma, R : M \reduces \Gamma', R' : N$, where $\Gamma$ is the symbolic heap, $R$ is the reduction set and $M$ is the term at hand.
+
+The reductions then are:
+
+
+\begin{gather*}
+  \infer
+      [\text{(Lambda)}]
+      {\Gamma, R : \lambda x. e \reduces \Gamma, R : \lambda x. e}
+      {}
+      \\
+      \\
+  \infer
+      [\text{(Variable, known)}]
+      {\Gamma[x \to e], R : x \reduces \Gamma'[x \to z], R' : z}
+      {\Gamma, R : e \reduces \Gamma', R' : z}
+      \\
+      \\
+  \infer
+      [\text{(Variable, unknown)}]
+      {\Gamma, R : x \reduces \Gamma, R \cup \{x\} : x}
+      {x \notin \Gamma}
+      \\
+      \\
+  \infer
+      [\text{(Boxed, known)}]
+      {\Gamma,R : f \app x \reduces \Gamma'',R'' : z}
+      {\Gamma,R : f \reduces \Gamma',R' : \lambda y. e \;\;\;\;\; \Gamma'[w \to x],R' : e[w/y] \reduces \Gamma'',R'' : z}
+      \\
+      \\
+  \infer
+      [\text{(Boxed, unknown)}]
+      {\Gamma,R : f \app x \reduces \Gamma',R' \cup \{\uppity{(g \app x)}\} : g \app x}
+      {\Gamma,R : f \reduces \Gamma',R' : g \;\;\;\;\; g \neq \lambda \_.\_}
+      \\
+      \\
+  \infer
+      [\text{(Unboxed, known)}]
+      {\Gamma,R : f \unboxed x \reduces \Gamma'',R'' : z}
+      {\Gamma,R : f \reduces \Gamma',R' : \lambda y. e \;\;\;\;\; \Gamma',R' : e[x/y] \reduces \Gamma'',R'' : z}
+      \\
+      \\
+      \infer
+      [\text{(Unboxed, unknown)}]
+      {\Gamma,R : f \unboxed x \reduces \Gamma',R' \cup \{\uppity{(g \unboxed x)}\} : g \app x}
+      {\Gamma,R : f \reduces \Gamma',R' : g \;\;\;\;\; g \neq \lambda \_.\_}
+      \\
+      \\
+  \infer
+      [\text{(Strict, known)}]
+      {\Gamma, R : f \strict x \reduces \Gamma''', R''' : z}
+      {\Gamma, R : x \reduces \Gamma', R' : s \;\;\;\;\; \Gamma', R' : f \reduces \Gamma'', R'' : \lambda y. e \;\;\;\;\; \Gamma'', R'' : e[s/y] \reduces \Gamma''', R''' : z}
+      \\
+      \\
+  \infer
+      [\text{(Strict, unknown)}]
+      {\Gamma, R : f \strict x \reduces \Gamma'', R'' : g \strict z}
+      {\Gamma,R : f \reduces \Gamma',R' : g \;\;\;\;\; g \neq \lambda \_.\_ \;\;\;\;\; \Gamma', R' : x \reduces \Gamma'', R'' : z}
+      \\
+      \\
+\end{gather*}
+
+\subsection{Construction}
+
+\newcommand{\constr}[1]{\{#1\}}
+
+Our construction $\constr{-}_{\rho}$ needs to do the same reductions as the original term and it needs to do these in an order that minimizes work. Because of this we will traverse the Reduction set in an order that has the following constraint:
+
+$\forall M, N. (M \app N) \in R \to (M \in R \to M < (M \app N)) \land (N \in R \to N < (M \app N))$
+
+In other words we want the reduction of both the function and the argument to happen before the reduction of the application does. In the construction we will assume that the input reduction list satisfies this constraint.
+
+The construction will use an environment $\rho$ to keep track of fresh variables corresponding to reduced variables/applications.
+
+\begin{align*}
+  \constr{[]}_{\rho, T} &= \rho(T)\\
+  \constr{x :: L}_{\rho, T} &= (\lambda \nu. \constr{L})_{\rho[x\to\nu], T} \strict x && \text{$\nu$ fresh}\\
+  \constr{M N :: L}_{\rho, T} &= (\lambda \nu. \constr{L})_{\rho[M \app N \to\nu], T} \strict X && \text{$\nu$ fresh}\\
+  & \text{where}\\
+  & \;\;\; X = \rho(M) \unboxed \rho(N) && \text{if $N \in \rho$}\\
+  & \;\;\; X = \rho(M) \app N && \text{otherwise}\\
+\end{align*}
+
+\subsection{Example}
+
+To demonstrate what the above transformation does let's examine what happens with the following term:\\
+
+$M = g \app x + (g \app x + x)$\\
+
+$g$ and $x$ are free variables and $+$ is defined as\\
+
+$a + b = plus \strict a \strict b$\\
+
+In other words it is an unknown function (free variable) that requires both arguments to be in whnf.\\
+
+After symbolic reduction and construction (choosing an arbitrary ordering for construction) the new term is going to be:\\
+
+$(\lambda 1.(\lambda 2.(\lambda 3.(\lambda 4.(\lambda 5.(\lambda 6.(\lambda 7.7) \strict (5 \unboxed 6)) \strict (5 \unboxed 2)) \strict (4 \unboxed 3)) \strict plus) \strict (1 \unboxed 2)) \strict x) \strict g$\\
+
+Arguably this is not the most beautiful term ever, the construction function could be made much smarter, but it does demonstrate that the algorithm correctly detected strictness and unboxing opportunities.
+
+\subsection{[MORE EXAMPLES?]}
 
 \section{Project plan}
 

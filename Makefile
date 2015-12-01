@@ -17,8 +17,10 @@ build/$(TARGET).pdf: build/$(TARGET).tex
 	&& latex $(TARGET).tex \
 	&& pdflatex $(TARGET).tex \
 
-watch: build/$(TARGET).pdf
+open: build/$(TARGET).pdf
 	evince build/$(TARGET).pdf &
+
+watch: open
 	@while inotifywait -e close_write src > /dev/null ; \
 		do (\
 			make & true ; \
