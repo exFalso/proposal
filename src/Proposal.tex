@@ -57,40 +57,42 @@ The optimization would therefore have two parts: symbolic evaluation (code $\to$
 Existing optimizations like strictness analysis/demand analysis, inlining or compile time garbage collection can be seen as different parameterizations.
 
 \begin{itemize}
-\item [EXPAND]Strictness/demand analysis
+\item Strictness/demand analysis
 
-Cite Mycroft (Cousots?)(strictness), SPJ(demand). The IR would be operations on the heap, reduction to whnf etc. The effect would be a refining of an unknown heap. The construction would simply look at what reductions took place and do those. As unused(absent) arguments will not be part of the effect the constructed code will also not care about them.
+Strictness analysis allows compilers of lazy languages to detect possibilities of eager argument evaluation. This has the benefit that it allows the compiler to avoid ``boxing'' the value(allocating a thunk for it in the heap) and pass the value directly.
 
-\item [EXPAND]Inlining
+We can detect these opportunities by doing symbolic evaluation that calculates what terms will definitely be reduced in the expression(code $\to$ effect). Then we can construct code that does precisely the same reductions, only this time we are in control of when and in what order these should happen for maximum efficienct. We will explore this idea later a bit more formally.
 
-What to cite?
+(Cite Mycroft (Cousots?)(strictness), Peyton Jones(demand).)
 
-Start the analysis with added information about functions in scope.
+\item Inlining
 
-\item [EXPAND]Compile time garbage collection
+Because we are doing symbolic evaluation our reduction will stop and one point or another because of lack of information. An example of this is when we want to reduce a symbol that is not in scope of the evaluation. In these cases all we can do is reconstruct the original reduction. However by simply extending the input with information about symbols in scope we allow the symbolic evaluation to continue, and in effect inline the symbol.
 
-What to cite?
+\item Compile time garbage collection
 
-Before construction garbage collect the symbolic state.
+If our runtime is garbage collected we will most probably want an intermediate representation that can directly manipulate the garbage collected heap. The effect of the reduction of this representation is then going to be allocations, dereferences etcetera. What we can do is before we do construction of the new code we can garbage collect the symbolic heap by looking at what references are in scope at the end. This way unneeded heap operations will not be present in the new code.
 
 \end{itemize}
 
-\subsubsection*{[RANT, REMOVE?]Lower coupling of responsibilities in compilers}
+\subsubsection*{Lower coupling of responsibilities in compilers}
 
 Because our optimization constructs code on the same abstraction level as it started from it can be seen as an automorphism on a given intermediate representation. If we were successful in defining a general framework for evaluation-construction then compilation would become a matter of choosing the right intermediate representations until we reach machine code. The compiler writer can focus on the correctness of each translation step without having to worry about generating optimal code. Optimization would become a decoupled operation that may be performed on each representation.
 
 \subsubsection*{Possibility of dynamic optimization}
 
-If we integrate this optimization into the runtime system we can do the same analysis extended with dynamic information about the runtime state (e.g. instead of starting with an unknown heap extend it with available information), possibly resulting in the construction of (byte)code that is specifically catered for the runtime environment at hand.
+If we integrate this optimization into the runtime system we can do the same analysis extended with dynamic information about the runtime state (e.g. instead of starting with an unknown heap extend it with available information), possibly resulting in the construction of code that is specifically catered for the runtime environment at hand. An example of this would be a long running program that initially loads a configuration. Statically we have no way of knowing what the configuration is going to be, and we might miss out on chances to prune whole parts of the program (if the configuration affects branching), however at runtime we detect these long-residing objects and inline them dynamically.
 
 \mbox{}\\
 
 
 \section{Examples of desired results}
 
-In the following I will try to demonstrate what I mean by \emph{effect} and \emph{construction}. Our goal will be to take a slightly modified version of the lazy lambda calculus presented in Launchbury's seminal paper\cite{Launchbury:1993:NSL:158511.158618} and extend it in a way that it is capable of expressing optimized code in terms of strictness and unboxing.
+In the following I will try to demonstrate what I mean by \emph{effect} and \emph{construction}. Our goal will be to take a slightly modified version of the lazy lambda calculus presented in Launchbury's seminal paper\cite{Launchbury:1993:NSL:158511.158618} and extend it so that it is capable of expressing optimized code in terms of strictness and unboxing.
 
 We will then proceed to give operational semantics for the calculus itself and afterwards define symbolic evaluation that calculates the effect of the reduction, which, unsurprisingly, will closely follow the structure of the operational semantics. Once we have an understanding of the effect we can define the construction of optimized code producing the same effect.
+
+Please note that my intention with this example is to demonstrate the idea rather than to provide an actual solution to the strictness optimization problem.
 
 \subsection{The calculus}
 
@@ -145,12 +147,17 @@ In the following we will simply extend the semantics given in \cite{Launchbury:1
 
 Before we specify symbolic reduction we need to understand what the \emph{effect} of reduction is. In our case it is going to be the set of variables and applications that are reduced to weak head normal form.
 
-Our reduction context is going to be a set of reductions and a \emph{symbolic} heap. By symbolic I mean that the reduction will finish if we try to reduce a variable that is not in the heap (free variables), much like what happens in the operational semantics in the case of lambdas. This would be a common theme for any intermediate representation we would like to examine using symbolic evaluation.
-
-Sidenote: Initially I only planned to account for unboxing/strictness opportunities, but I realized that with little modification the analysis can also account for \emph{safe} common subexpression elimination as well. That is, we only extract two equivalent subexpressions into one if both are guaranteed to reduce.
+Our reduction context is going to be a set of reductions and a \emph{symbolic} heap. By symbolic I mean that the reduction will finish if we try to reduce a variable that is not in the heap (free variables), much like what happens in the operational semantics in the case of lambdas. This stopping of the symbolic evaluation would be a common theme for any intermediate representation we would like to examine this way, as we can never have complete information about the runtime state.
 
 \mbox{}\\
 
+\begingroup
+\leftskip2em Sidenode: Initially I only planned to account for unboxing/strictness opportunities, but I realized that with little modification the analysis can also account for \emph{safe} common subexpression elimination as well. By \emph{safe} I mean that, we only extract two equivalent subexpressions into one if both are guaranteed to reduce. This way we avoid the potential memory leaks caused by a naive CSE.
+\par
+\endgroup
+
+
+\mbox{}\\
 
 The reduction set will contain either variables or applications. Note that if during symbolic evaluation we reduce $f \app x$ as well as $f \strict x$ then we want to represent them as the same in the reduction set. This is because at construction we will know whether we want unboxed application (if the argument was reduced as well) or simple application. In essence all strict applications will become unboxed, all unboxed applications will stay unboxed and boxed applications may or may not become unboxed. To this end we will need a helper function to disregard the type of applications in a term, in particular those that are guaranteed to reduce:
 
@@ -209,7 +216,7 @@ The reductions then are:
       \\
       \infer
       [\text{(Unboxed, unknown)}]
-      {\Gamma,R : f \unboxed x \reduces \Gamma',R' \cup \{\uppity{(g \unboxed x)}\} : g \app x}
+      {\Gamma,R : f \unboxed x \reduces \Gamma',R' \cup \{\uppity{(g \unboxed x)}\} : g \unboxed x}
       {\Gamma,R : f \reduces \Gamma',R' : g \;\;\;\;\; g \neq \lambda \_.\_}
       \\
       \\
@@ -221,7 +228,7 @@ The reductions then are:
       \\
   \infer
       [\text{(Strict, unknown)}]
-      {\Gamma, R : f \strict x \reduces \Gamma'', R'' : g \strict z}
+      {\Gamma, R : f \strict x \reduces \Gamma'', R'' \cup \{\uppity{(g \strict z)}: g \strict z}
       {\Gamma,R : f \reduces \Gamma',R' : g \;\;\;\;\; g \neq \lambda \_.\_ \;\;\;\;\; \Gamma', R' : x \reduces \Gamma'', R'' : z}
       \\
       \\
@@ -264,9 +271,7 @@ After symbolic reduction and construction (choosing an arbitrary ordering for co
 
 $(\lambda 1.(\lambda 2.(\lambda 3.(\lambda 4.(\lambda 5.(\lambda 6.(\lambda 7.7) \strict (5 \unboxed 6)) \strict (5 \unboxed 2)) \strict (4 \unboxed 3)) \strict plus) \strict (1 \unboxed 2)) \strict x) \strict g$\\
 
-Arguably this is not the most beautiful term ever, the construction function could be made much smarter, but it does demonstrate that the algorithm correctly detected strictness and unboxing opportunities.
-
-\subsection{[MORE EXAMPLES?]}
+Arguably this is not the most beautiful term ever, the construction function could be made much smarter, but it does demonstrate that the algorithm correctly detected strictness, unboxing and CSE opportunities.
 
 \section{Project plan}
 
@@ -283,7 +288,7 @@ By the end of the project I would like to
 
 \subsection{Steps}
 
-Following is the layout the bigger strokes of the project. The ordering is somewhat arbitrary and would be fixed as the project develops.
+Following is the layout of the bigger strokes of the project. The ordering is somewhat arbitrary and would be fixed as the project develops.
 
 \subsubsection*{Reading}
 
